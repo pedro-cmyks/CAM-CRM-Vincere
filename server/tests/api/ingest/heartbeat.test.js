@@ -160,11 +160,20 @@ describe('heartbeat body validation', () => {
     }))).toThrow('invalid_heartbeat');
   });
 
-  it('rejects supplied success later than supplied capture', () => {
-    expect(() => normalizeHeartbeatBody(body({
+  it('accepts a success later than the capture it carried', () => {
+    // This asserted the opposite, and the rule it pinned took a live VPS off the
+    // board on 2026-08-31: it paired, captured and queued, and then every
+    // heartbeat was refused while the CRM showed it as never set up. An upload
+    // finishes after the capture it carries, so this is the ordinary order, and
+    // the reverse is ordinary too once a capture has happened since the last
+    // acknowledged upload. Neither says anything is wrong.
+    const normalized = normalizeHeartbeatBody(body({
       lastCaptureAt: '2026-07-23T20:40:00Z',
       lastSuccessAt: '2026-07-23T20:40:00.001Z',
-    }))).toThrow('invalid_heartbeat');
+    }));
+
+    expect(normalized.lastCaptureAt).toBe('2026-07-23T20:40:00Z');
+    expect(normalized.lastSuccessAt).toBe('2026-07-23T20:40:00.001Z');
   });
 
   it.each([
@@ -304,14 +313,26 @@ describe('public ingest heartbeat', () => {
     expect(JSON.stringify(res.body)).not.toContain('unexpected');
   });
 
-  it.each([
-    ['future timestamp', { lastCaptureAt: '2026-07-23T21:05:00.001Z', lastSuccessAt: null }],
-    ['success after capture', { lastCaptureAt: '2026-07-23T20:40:00Z', lastSuccessAt: '2026-07-23T20:40:00.001Z' }],
-  ])('returns controlled validation for authenticated %s', async (_label, timestampOverrides) => {
+  it('returns controlled validation for an authenticated future timestamp', async () => {
+    // A timestamp ahead of the server is a clock fault and stays refused.
     const { handler, calls } = setup();
-    const res = await heartbeat(handler, body(timestampOverrides));
+    const res = await heartbeat(handler, body({ lastCaptureAt: '2026-07-23T21:05:00.001Z', lastSuccessAt: null }));
     expect(res).toMatchObject({ statusCode: 400, body: { error: 'invalid_heartbeat' } });
     expect(calls.record).toHaveLength(0);
+  });
+
+  it('records an authenticated heartbeat whose success is later than its capture', async () => {
+    // Was grouped with the future timestamp above as though the two were the
+    // same kind of fault. They are not. An upload finishes after the capture it
+    // carries, and refusing that took a live VPS off the board for a day while
+    // it was capturing and queueing correctly the whole time.
+    const { handler, calls } = setup();
+    const res = await heartbeat(handler, body({
+      lastCaptureAt: '2026-07-23T20:40:00Z',
+      lastSuccessAt: '2026-07-23T20:40:00.001Z',
+    }));
+    expect(res).toMatchObject({ statusCode: 200 });
+    expect(calls.record).toHaveLength(1);
   });
 
   it('rejects authenticated bodies over 8 KiB', async () => {
