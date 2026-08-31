@@ -14,6 +14,13 @@
 -- this removes the same false rule from the database, which would otherwise
 -- have refused every heartbeat sent after the first upload the agent completed.
 --
+-- There were TWO copies of the rule, not one, and the second is the one that
+-- actually bit: it compared the EFFECTIVE values, after merging what the device
+-- sent with what the row already held, and it also refused any heartbeat whose
+-- success time was set while its capture time was null. A device that has
+-- uploaded but whose capture timestamp has not been recorded is in a perfectly
+-- ordinary state. Both are gone.
+--
 -- The future-skew guards stay. A timestamp more than five minutes ahead of the
 -- server is a clock problem worth refusing; an ordering between two honest
 -- timestamps is not.
@@ -116,13 +123,6 @@ begin
     when p_last_success_at is null then v_device.last_success_at
     else greatest(v_device.last_success_at, p_last_success_at)
   end;
-
-  if v_effective_success_at is not null
-    and (v_effective_capture_at is null
-         or v_effective_success_at > v_effective_capture_at) then
-    raise exception 'INVALID_HEARTBEAT_REQUEST'
-      using errcode = '22023';
-  end if;
 
   v_unchanged :=
     v_device.agent_version is not distinct from p_agent_version

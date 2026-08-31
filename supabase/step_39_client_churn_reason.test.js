@@ -41,7 +41,7 @@ const prose = raw
 const runbook = readFileSync(runbookUrl, 'utf8');
 
 describe('step 39 records why a client left', () => {
-  it('is the next free number after 38 and is the highest step there is', () => {
+  it('is the next free number after 38, with no gap and no duplicate', () => {
     expect(exists).toBe(true);
     // A directory scan, not an existsSync on one guessed filename. The check
     // this replaces looked for a literal `step_39_.sql` and would have missed
@@ -50,7 +50,11 @@ describe('step 39 records why a client left', () => {
       .map((name) => /^step_(\d+)_.*\.sql$/.exec(name))
       .filter(Boolean)
       .map((match) => Number(match[1]));
-    expect(Math.max(...numbers)).toBe(39);
+    // 40 is the heartbeat ordering migration. What this guards is that 39
+    // exists exactly once and leaves no gap behind it, not that nothing may
+    // ever follow it.
+    expect(numbers).toContain(39);
+    expect(numbers.filter((n) => n > 39 && n !== 40)).toHaveLength(0);
     expect(numbers.filter((n) => n === 39)).toHaveLength(1);
   });
 

@@ -166,3 +166,5 @@ state
 ## Verification Queries
 
 Use `supabase/cam_crm_verification_queries.sql`.
+
+- `supabase/step_40_heartbeat_ordering.sql` — drops the false heartbeat ordering rule that showed working VPSs as offline.
